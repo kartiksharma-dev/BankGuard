@@ -1,0 +1,43 @@
+# Data manipulation
+pandas
+numpy
+
+# Data visualization
+matplotlib
+seaborn
+
+# Machine Learning
+scikit-learn
+xgboost
+
+# Imbalanced classification
+imbalanced-learn
+
+# Explainable AI
+shap
+
+# Model / preprocessing persistence
+joblib
+
+# Statistical / scientific computing
+scipy
+
+# Jupyter / Notebook
+jupyter
+jupyterlab
+ipykernel
+nbformat
+nbconvert
+
+# File formats
+openpyxl
+pyarrow
+
+# Configuration
+PyYAML
+
+# Progress bars
+tqdm
+
+# Testing
+pytest
