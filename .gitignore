@@ -36,3 +36,20 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Raw datasets
+ml/data/raw/
+
+# Processed datasets
+ml/data/processed/
+
+# Processed datasets
+ml/data/processed/
+# Generated preprocessing artifacts
+ml/artifacts/preprocessors/
+
+# Generated reports
+ml/artifacts/reports/
+
+# Jupyter
+.ipynb_checkpoints/
