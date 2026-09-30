@@ -25,11 +25,6 @@ htmlcov/
 *.joblib
 *.model
 
-# Data
-*.csv
-*.parquet
-data/
-
 # Logs
 *.log
 
@@ -43,8 +38,9 @@ ml/data/raw/
 # Processed datasets
 ml/data/processed/
 
-# Processed datasets
-ml/data/processed/
+# Generated model artifacts
+ml/artifacts/models/
+
 # Generated preprocessing artifacts
 ml/artifacts/preprocessors/
 
