@@ -1,0 +1,8 @@
+risk_scoring:
+  low_max: 0.30
+  medium_max: 0.70
+
+decisions:
+  low: ALLOW
+  medium: REVIEW
+  high: REVIEW
