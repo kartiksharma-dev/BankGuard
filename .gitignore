@@ -49,3 +49,7 @@ ml/artifacts/reports/
 
 # Jupyter
 .ipynb_checkpoints/
+
+mlflow.db
+mlflow.db
+mlartifacts/
