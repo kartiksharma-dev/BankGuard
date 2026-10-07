@@ -1646,8 +1646,8 @@ Deployment
 ├───────────────────────────────────────────┤
 │ Phase 1 — Foundation             COMPLETE │
 │ Phase 2 — Fraud ML Pipeline      COMPLETE │
-│ Phase 3 — MLflow                 NEXT     │
-│ Phase 4 — Transaction Simulator   PLANNED  │
+│ Phase 3 — MLflow                 COMPLETE    │
+│ Phase 4 — Transaction Simulator   COMPLETE  │
 │ Phase 5 — FastAPI                PLANNED  │
 │ Phase 6 — PostgreSQL              PLANNED  │
 │ Phase 7 — React Dashboard         PLANNED  │
