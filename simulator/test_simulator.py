@@ -1,7 +1,12 @@
+
+from datetime import datetime
+from unittest.mock import patch
+
 from pydantic import ValidationError
 
 from simulator.customer import CustomerProfile
 from simulator.generator import create_customer, generate_transaction
+from simulator.pipeline import score_transaction
 from simulator.scenarios import TransactionScenario
 from simulator.schemas import Transaction
 
@@ -113,7 +118,7 @@ def test_invalid_amount():
             merchant_category="ELECTRONICS",
             device_id="D100",
             location="Mumbai",
-            timestamp=__import__("datetime").datetime.now(),
+            timestamp=datetime.now(),
             payment_method="CARD",
         )
 
@@ -121,3 +126,31 @@ def test_invalid_amount():
 
     except ValidationError:
         print("PASS: Invalid amount rejected")
+
+
+def test_high_velocity_pipeline():
+    with patch(
+        "simulator.pipeline.predict_fraud",
+        return_value={"fraud_prediction": 1},
+    ):
+        result = score_transaction(
+            scenario=TransactionScenario.HIGH_VELOCITY
+        )
+
+    transaction = result["transaction"]
+    behavioral_features = result["behavioral_features"]
+
+    # Verify transaction details.
+    assert transaction.transaction_id
+    assert transaction.customer_id
+    assert transaction.amount > 0
+
+    # Verify the simulated model prediction is returned.
+    assert result["fraud_prediction"] == 1
+
+    # Verify behavioral detection.
+    assert behavioral_features["high_velocity"] == 1
+    assert behavioral_features["new_device"] == 0
+    assert behavioral_features["unusual_location"] == 0
+
+    print("PASS: High velocity pipeline")

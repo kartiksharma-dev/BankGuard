@@ -157,7 +157,10 @@ def generate_transaction(
     # Update account states
     
 
-    customer.record_transaction(amount)
+    customer.record_transaction(
+        amount,
+        timestamp=transaction.timestamp,
+    )
     destination.receive_transaction(amount)
 
     return transaction

@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 @dataclass
@@ -11,15 +12,24 @@ class CustomerProfile:
 
     transaction_count: int = 0
     transaction_history: list[float] = field(default_factory=list)
+    transaction_timestamps: list[datetime] = field(default_factory=list)
 
     step: int = 0
 
-    def record_transaction(self, amount: float) -> None:
+    def record_transaction(
+        self,
+        amount: float,
+        timestamp: datetime | None = None,
+    ) -> None:
+        """Record a transaction amount and its timestamp."""
+
+        transaction_timestamp = timestamp or datetime.now()
+
         self.transaction_count += 1
         self.transaction_history.append(amount)
+        self.transaction_timestamps.append(transaction_timestamp)
 
         self.account_balance -= amount
-
         self.step += 1
 
 
@@ -29,4 +39,6 @@ class DestinationAccount:
     balance: float = 50000.0
 
     def receive_transaction(self, amount: float) -> None:
+        """Update the destination account balance."""
+
         self.balance += amount
