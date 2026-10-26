@@ -13,6 +13,8 @@ def score_transaction_endpoint(transaction: Transaction):
     """Score a transaction submitted by an API client."""
     try:
         return score_submitted_transaction(transaction)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=500,
