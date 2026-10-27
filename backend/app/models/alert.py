@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.app.models.transaction import Transaction
+    from backend.app.models.investigation import Investigation
 
 
 
@@ -48,4 +49,9 @@ class Alert(Base):
 
     transaction: Mapped["Transaction"] = relationship(
         back_populates="alerts",
+    )
+
+    investigation: Mapped["Investigation | None"] = relationship(
+        back_populates="alert",
+        uselist=False,
     )

@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-
+from backend.app.api.transactions import router as transactions_router
 from backend.app.api.risk import router as risk_router
 from backend.app.api.simulator import router as simulator_router
 from backend.app.services.mlflow_manager import ensure_mlflow_running
 from simulator.model_scoring import load_production_model
-
+from backend.app.api.alerts import router as alerts_router
+from backend.app.api.investigations import router as investigations_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,7 +39,9 @@ app = FastAPI(
 
 app.include_router(risk_router)
 app.include_router(simulator_router)
-
+app.include_router(transactions_router)
+app.include_router(alerts_router)
+app.include_router(investigations_router)
 
 @app.get("/")
 def root():

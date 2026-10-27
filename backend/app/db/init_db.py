@@ -1,10 +1,17 @@
 from backend.app.db.session import Base, engine
-from backend.app.models import Alert, customer, Transaction
+from backend.app.models import (
+    Alert,
+    Customer,
+    Investigation,
+    Transaction,
+)
+
 
 def create_tables() -> None:
-    """Creating missing BankGuard databse tables."""
+    """Create missing BankGuard database tables."""
     Base.metadata.create_all(bind=engine)
     print("BankGuard database tables created or already exist.")
+
 
 if __name__ == "__main__":
     try:
