@@ -19,6 +19,11 @@ if not DATABASE_URL:
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
+    # Limit PostgreSQL connection establishment to 5 seconds.
+    # psycopg v3 forwards connect_args to libpq as connection keyword arguments.
+    # Without this, a non-responsive PostgreSQL host causes SQLAlchemy to block
+    # for the OS-level TCP timeout (several minutes), hanging every API request.
+    connect_args={"connect_timeout": 5},
 )
 
 SessionLocal = sessionmaker(
@@ -39,4 +44,4 @@ def get_db():
     try:
         yield db
     finally:
-        db.close()
+        db.close()       
