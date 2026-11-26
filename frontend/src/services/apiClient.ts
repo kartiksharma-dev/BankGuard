@@ -7,6 +7,8 @@ import {
   InvestigationCreatePayload,
   InvestigationItem,
   InvestigationUpdatePayload,
+  SimulationStartPayload,
+  SimulationStatusResponse,
   TransactionsResponse,
 } from '../types/api';
 
@@ -189,6 +191,24 @@ export const api = {
     return request<InvestigationItem>(`/api/v1/investigations/${investigationId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
+    });
+  },
+
+  // Simulation Stream Management (Phase 8)
+  async getSimulationStatus(): Promise<SimulationStatusResponse> {
+    return request<SimulationStatusResponse>('/api/v1/simulator/stream/status');
+  },
+
+  async startSimulationStream(payload?: SimulationStartPayload): Promise<SimulationStatusResponse> {
+    return request<SimulationStatusResponse>('/api/v1/simulator/stream/start', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
+  async stopSimulationStream(): Promise<SimulationStatusResponse> {
+    return request<SimulationStatusResponse>('/api/v1/simulator/stream/stop', {
+      method: 'POST',
     });
   },
 };

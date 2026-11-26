@@ -5,6 +5,7 @@ import { DashboardOverview } from './pages/DashboardOverview';
 import { TransactionsPage } from './pages/TransactionsPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { InvestigationsPage } from './pages/InvestigationsPage';
+import { RealtimeProvider } from './context/RealtimeContext';
 
 export const App: React.FC = () => {
   const [refreshKey, setRefreshKey] = useState<number>(0);
@@ -19,25 +20,27 @@ export const App: React.FC = () => {
   };
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <Layout
-              onGlobalRefresh={handleGlobalRefresh}
-              isRefreshing={isRefreshing}
-            />
-          }
-        >
-          <Route index element={<DashboardOverview key={`dash-${refreshKey}`} />} />
-          <Route path="transactions" element={<TransactionsPage key={`tx-${refreshKey}`} />} />
-          <Route path="alerts" element={<AlertsPage key={`alert-${refreshKey}`} />} />
-          <Route path="investigations" element={<InvestigationsPage key={`inv-${refreshKey}`} />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <RealtimeProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Layout
+                onGlobalRefresh={handleGlobalRefresh}
+                isRefreshing={isRefreshing}
+              />
+            }
+          >
+            <Route index element={<DashboardOverview key={`dash-${refreshKey}`} />} />
+            <Route path="transactions" element={<TransactionsPage key={`tx-${refreshKey}`} />} />
+            <Route path="alerts" element={<AlertsPage key={`alert-${refreshKey}`} />} />
+            <Route path="investigations" element={<InvestigationsPage key={`inv-${refreshKey}`} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </RealtimeProvider>
   );
 };
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 
 import joblib
 import pandas as pd
@@ -38,16 +39,31 @@ EXPECTED_FEATURES = [
     "transaction_day",
 ]
 
+_preprocessor = None
+_preprocessor_lock = threading.Lock()
+
 
 def load_preprocessor():
-    """Load the existing Phase 2 engineered preprocessor."""
+    """Load the existing Phase 2 engineered preprocessor once in a thread-safe manner and reuse it."""
+    global _preprocessor
 
-    if not PREPROCESSOR_PATH.exists():
-        raise FileNotFoundError(
-            f"Preprocessor not found: {PREPROCESSOR_PATH}"
-        )
+    if _preprocessor is None:
+        with _preprocessor_lock:
+            if _preprocessor is None:
+                if not PREPROCESSOR_PATH.exists():
+                    raise FileNotFoundError(
+                        f"Preprocessor not found: {PREPROCESSOR_PATH}"
+                    )
+                _preprocessor = joblib.load(PREPROCESSOR_PATH)
 
-    return joblib.load(PREPROCESSOR_PATH)
+    return _preprocessor
+
+
+def reset_preprocessor_cache() -> None:
+    """Reset the in-memory cached preprocessor (used for testing and cache invalidation)."""
+    global _preprocessor
+    with _preprocessor_lock:
+        _preprocessor = None
 
 
 def transform_transaction(transaction: Transaction):

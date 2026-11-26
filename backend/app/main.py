@@ -1,4 +1,7 @@
+import asyncio
 from contextlib import asynccontextmanager
+import os
+import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +13,7 @@ from simulator.model_scoring import load_production_model
 from backend.app.api.alerts import router as alerts_router
 from backend.app.api.investigations import router as investigations_router
 from backend.app.api.dashboard import router as dashboard_router
+from backend.app.api.websocket import router as websocket_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -17,19 +21,31 @@ async def lifespan(app: FastAPI):
 
     print("Initializing BankGuard...")
 
-    # Start MLflow if it is not already running.
-    ensure_mlflow_running()
+    # Start MLflow if it is not already running and not in test execution.
+    if "pytest" not in sys.modules and not os.getenv("TESTING"):
+        ensure_mlflow_running()
 
-    # Load the production model once.
-    print("Loading production fraud detection model...")
-    model = load_production_model()
-    app.state.fraud_model = model
+        # Load the production model once.
+        print("Loading production fraud detection model...")
+        model = load_production_model()
+        app.state.fraud_model = model
 
     print("BankGuard is ready.")
 
     yield
 
     print("BankGuard application shutting down.")
+    try:
+        from backend.app.services.simulator_service import streamer
+        if streamer.is_running:
+            streamer.stop()
+        if streamer._task and not streamer._task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(streamer._task), timeout=2.0)
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -58,6 +74,7 @@ app.include_router(transactions_router)
 app.include_router(alerts_router)
 app.include_router(investigations_router)
 app.include_router(dashboard_router)
+app.include_router(websocket_router)
 
 
 @app.get("/")

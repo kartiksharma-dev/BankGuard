@@ -15,12 +15,21 @@ import { TransactionVolumeChart } from '../components/charts/TransactionVolumeCh
 import { RiskDistributionChart } from '../components/charts/RiskDistributionChart';
 import { CategoryChart } from '../components/charts/CategoryChart';
 import { LocationChart } from '../components/charts/LocationChart';
+import { LiveTransactionFeed } from '../components/dashboard/LiveTransactionFeed';
+import { useRealtime } from '../context/RealtimeContext';
 
 export const DashboardOverview: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [charts, setCharts] = useState<DashboardChartsData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  const {
+    wsStatus,
+    lastEvent,
+    liveTransactions,
+    clearTransactions,
+  } = useRealtime();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -43,6 +52,36 @@ export const DashboardOverview: React.FC = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Dynamically increment KPI stats when a live transaction arrives over WebSocket
+  useEffect(() => {
+    if (!lastEvent || lastEvent.type !== 'TRANSACTION_PROCESSED' || !lastEvent.data) {
+      return;
+    }
+
+    const { transaction, risk_assessment, alert } = lastEvent.data;
+    const isFraud = transaction.fraud_prediction === 1;
+    const isHighRisk = risk_assessment?.risk_level === 'HIGH' || Boolean(alert);
+    const hasAlert = Boolean(alert);
+
+    setStats((prev) => {
+      if (!prev) return prev;
+      const newTotal = prev.total_transactions + 1;
+      const newFraud = prev.fraud_detected + (isFraud ? 1 : 0);
+      const newHighRiskCount = prev.high_risk_transactions + (isHighRisk ? 1 : 0);
+      const newOpenAlerts = prev.open_alerts + (hasAlert ? 1 : 0);
+      const newRate = newTotal > 0 ? (newFraud / newTotal) * 100 : 0;
+
+      return {
+        ...prev,
+        total_transactions: newTotal,
+        fraud_detected: newFraud,
+        high_risk_transactions: newHighRiskCount,
+        open_alerts: newOpenAlerts,
+        fraud_rate: newRate,
+      };
+    });
+  }, [lastEvent]);
 
   return (
     <div className="space-y-6">
@@ -125,6 +164,13 @@ export const DashboardOverview: React.FC = () => {
           loading={loading}
         />
       </div>
+
+      {/* Live Transaction Feed Component */}
+      <LiveTransactionFeed
+        transactions={liveTransactions}
+        isWsConnected={wsStatus === 'connected'}
+        onClear={clearTransactions}
+      />
 
       {/* Analytics Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -7,6 +7,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Radio,
 } from 'lucide-react';
 import { api } from '../services/apiClient';
 import { AlertItem } from '../types/api';
@@ -14,6 +15,7 @@ import { Badge } from '../components/common/Badge';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorMessage } from '../components/common/ErrorMessage';
 import { EmptyState } from '../components/common/EmptyState';
+import { useRealtime } from '../context/RealtimeContext';
 
 export const AlertsPage: React.FC = () => {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -51,6 +53,36 @@ export const AlertsPage: React.FC = () => {
     fetchAlerts();
   }, [fetchAlerts]);
 
+  const { lastEvent, isSimulating } = useRealtime();
+
+  // Dynamically prepend new alerts triggered by real-time transactions
+  useEffect(() => {
+    if (!lastEvent || !lastEvent.data) return;
+
+    let incomingAlert: AlertItem | null = null;
+    if (lastEvent.type === 'ALERT_CREATED' && lastEvent.data.alert) {
+      incomingAlert = lastEvent.data.alert;
+    } else if (lastEvent.type === 'TRANSACTION_PROCESSED' && lastEvent.data.alert) {
+      incomingAlert = lastEvent.data.alert;
+    }
+
+    if (incomingAlert) {
+      const matchesSearch =
+        !transactionIdSearch.trim() ||
+        incomingAlert.transaction_id.toLowerCase().includes(transactionIdSearch.trim().toLowerCase());
+      const matchesStatus =
+        statusFilter === 'all' ||
+        incomingAlert.status.toUpperCase() === statusFilter.toUpperCase();
+
+      if (matchesSearch && matchesStatus) {
+        setAlerts((prev) => {
+          if (prev.some((a) => a.alert_id === incomingAlert!.alert_id)) return prev;
+          return [incomingAlert!, ...prev];
+        });
+      }
+    }
+  }, [lastEvent, statusFilter, transactionIdSearch]);
+
   const handleStartInvestigation = async () => {
     if (!selectedAlert) return;
     setSubmittingInv(true);
@@ -77,11 +109,19 @@ export const AlertsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Fraud Alerts</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Monitor system-generated fraud alerts and triage potential violations for investigation.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Fraud Alerts</h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Monitor system-generated fraud alerts and triage potential violations for investigation.
+          </p>
+        </div>
+        {isSimulating && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-950/60 text-amber-300 border border-amber-800/60 self-start sm:self-auto">
+            <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+            <span>Live Alert Ingestion</span>
+          </div>
+        )}
       </div>
 
       {/* Filter / Search Bar */}

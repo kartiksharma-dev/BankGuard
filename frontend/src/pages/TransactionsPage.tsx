@@ -12,6 +12,7 @@ import {
   XCircle,
   AlertTriangle,
   Info,
+  Radio,
 } from 'lucide-react';
 import { api } from '../services/apiClient';
 import { AlertItem, TransactionItem } from '../types/api';
@@ -19,6 +20,8 @@ import { Badge } from '../components/common/Badge';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorMessage } from '../components/common/ErrorMessage';
 import { EmptyState } from '../components/common/EmptyState';
+import { useRealtime } from '../context/RealtimeContext';
+import { formatCurrencyINR } from '../utils/formatters';
 
 const PAGE_SIZE = 15;
 
@@ -37,6 +40,35 @@ export const TransactionsPage: React.FC = () => {
   const [alertTypeInput, setAlertTypeInput] = useState<string>('FRAUD_SUSPECTED');
   const [creatingAlert, setCreatingAlert] = useState<boolean>(false);
   const [alertActionFeedback, setAlertActionFeedback] = useState<string | null>(null);
+
+  const { lastEvent, isSimulating } = useRealtime();
+
+  // Dynamically prepend incoming transactions when on page 1 with no filters
+  useEffect(() => {
+    if (!lastEvent || !lastEvent.data) return;
+
+    if (lastEvent.type === 'TRANSACTION_PROCESSED') {
+      const { transaction, alert } = lastEvent.data;
+      if (offset === 0 && !customerIdFilter.trim() && fraudFilter === 'all') {
+        setTransactions((prev) => {
+          if (prev.some((t) => t.transaction_id === transaction.transaction_id)) return prev;
+          return [transaction, ...prev.slice(0, PAGE_SIZE - 1)];
+        });
+        if (alert) {
+          setAlertsMap((prev) => ({
+            ...prev,
+            [transaction.transaction_id]: alert,
+          }));
+        }
+      }
+    } else if (lastEvent.type === 'ALERT_CREATED' && lastEvent.data.alert) {
+      const alert = lastEvent.data.alert;
+      setAlertsMap((prev) => ({
+        ...prev,
+        [alert.transaction_id]: alert,
+      }));
+    }
+  }, [lastEvent, offset, customerIdFilter, fraudFilter]);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -119,11 +151,19 @@ export const TransactionsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">Transactions</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Search, filter, and inspect persisted financial transactions scored by the risk pipeline.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Transactions</h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Search, filter, and inspect persisted financial transactions scored by the risk pipeline.
+          </p>
+        </div>
+        {isSimulating && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-cyan-950/60 text-cyan-300 border border-cyan-800/60 self-start sm:self-auto">
+            <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            <span>Streaming Live Ingestion</span>
+          </div>
+        )}
       </div>
 
       {/* Informational Architecture Context Note */}
@@ -226,7 +266,7 @@ export const TransactionsPage: React.FC = () => {
                       {tx.customer_id}
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-100">
-                      ${tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrencyINR(tx.amount)}
                     </td>
                     <td className="px-4 py-3 text-xs capitalize text-slate-400">
                       {tx.merchant_category}
@@ -336,7 +376,7 @@ export const TransactionsPage: React.FC = () => {
             <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800 text-xs space-y-1.5">
               <p><strong className="text-slate-400">Transaction ID:</strong> <span className="font-mono text-slate-200">{selectedTx.transaction_id}</span></p>
               <p><strong className="text-slate-400">Customer:</strong> <span className="text-slate-200">{selectedTx.customer_id}</span></p>
-              <p><strong className="text-slate-400">Amount:</strong> <span className="text-slate-200">${selectedTx.amount.toFixed(2)}</span></p>
+              <p><strong className="text-slate-400">Amount:</strong> <span className="text-slate-200">{formatCurrencyINR(selectedTx.amount)}</span></p>
               <p><strong className="text-slate-400">Location:</strong> <span className="text-slate-200">{selectedTx.location}</span></p>
             </div>
 

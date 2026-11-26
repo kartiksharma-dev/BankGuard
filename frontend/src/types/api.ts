@@ -98,3 +98,48 @@ export interface HealthResponse {
   application?: string;
   version?: string;
 }
+
+export interface RiskAssessmentData {
+  model_prediction: number;
+  behavioral_risk_score?: number;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+  recommended_action: 'ALLOW' | 'REVIEW';
+}
+
+export interface WebSocketTransactionPayload {
+  transaction: TransactionItem;
+  risk_assessment: RiskAssessmentData;
+  alert: AlertItem | null;
+}
+
+export interface WebSocketAlertPayload {
+  alert: AlertItem;
+}
+
+export interface WebSocketTransactionEvent {
+  type: 'TRANSACTION_PROCESSED' | 'ALERT_CREATED' | 'CONNECTION_ESTABLISHED' | 'PONG';
+  timestamp?: string;
+  message?: string;
+  data?: WebSocketTransactionPayload | WebSocketAlertPayload | any;
+}
+
+export interface SimulationStatusResponse {
+  is_running: boolean;
+  generation_interval: number;
+  rate_per_second: number;
+  scenario: string;
+  total_generated: number;
+  total_successful: number;
+  total_failed: number;
+  total_fraud: number;
+  total_alerts: number;
+  connected_clients: number;
+  last_error: string | null;
+  started_at: string | null;
+  stopped_at: string | null;
+}
+
+export interface SimulationStartPayload {
+  rate_per_second?: number;
+  scenario?: string;
+}
