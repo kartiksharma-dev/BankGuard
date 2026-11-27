@@ -32,25 +32,86 @@ export interface AlertCreatePayload {
   alert_type: string;
 }
 
+export type InvestigationStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
+export type InvestigationStatusRead = InvestigationStatus | 'CLOSED' | string;
+export type InvestigationOutcome = 'CONFIRMED_FRAUD' | 'LEGITIMATE';
+
+export interface InvestigationNote {
+  timestamp: string | null;
+  author: string | null;
+  content: string;
+}
+
+export interface LinkedTransactionSummary {
+  transaction_id: string;
+  customer_id: string;
+  amount: number;
+  merchant_category: string;
+  device_id: string;
+  location: string;
+  timestamp: string;
+  payment_method: string;
+  transaction_type: string;
+  fraud_prediction: number;
+}
+
+export interface LinkedAlertSummary {
+  alert_id: number;
+  transaction_id: string;
+  alert_type: string;
+  status: string;
+  created_at: string;
+  transaction: LinkedTransactionSummary | null;
+}
+
 export interface InvestigationItem {
   investigation_id: number;
   alert_id: number;
   assigned_to: string | null;
-  status: 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | string;
+  status: InvestigationStatusRead;
   findings: string | null;
+  outcome: InvestigationOutcome | null;
+  notes: InvestigationNote[];
   created_at: string;
   updated_at: string;
+  alert: LinkedAlertSummary | null;
 }
 
 export interface InvestigationCreatePayload {
   alert_id: number;
   assigned_to?: string | null;
+  initial_note?: string | null;
 }
 
 export interface InvestigationUpdatePayload {
   assigned_to?: string | null;
   status?: string | null;
   findings?: string | null;
+  note?: string | null;
+  outcome?: InvestigationOutcome | null;
+}
+
+export interface InvestigationAssignPayload {
+  assigned_to: string | null;
+  note?: string | null;
+  author?: string | null;
+}
+
+export interface InvestigationStartPayload {
+  assigned_to?: string | null;
+  note?: string | null;
+}
+
+export interface InvestigationNotePayload {
+  note: string;
+  author?: string | null;
+}
+
+export interface InvestigationResolvePayload {
+  outcome: InvestigationOutcome;
+  findings?: string | null;
+  assigned_to?: string | null;
+  author?: string | null;
 }
 
 export interface DashboardStats {

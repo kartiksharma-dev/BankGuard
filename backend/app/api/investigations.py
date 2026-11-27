@@ -1,17 +1,29 @@
+from collections.abc import Callable
 import logging
+from typing import Any, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from backend.app.db.session import get_db
-from backend.app.models.alert import Alert
-from backend.app.models.investigation import Investigation
 from backend.app.schemas.investigation import (
+    InvestigationAssignRequest,
     InvestigationCreate,
+    InvestigationNoteCreate,
+    InvestigationResolveRequest,
     InvestigationResponse,
+    InvestigationStartRequest,
     InvestigationUpdate,
+)
+from backend.app.services import investigation_service
+from backend.app.services.investigation_service import (
+    InvestigationAlertSyncError,
+    InvestigationConflictError,
+    InvestigationNotFoundError,
+    InvestigationValidationError,
+    UNSET,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,6 +32,52 @@ router = APIRouter(
     prefix="/api/v1/investigations",
     tags=["Investigations"],
 )
+
+_T = TypeVar("_T")
+
+
+def _optional_field(payload: BaseModel, field_name: str) -> Any:
+    """Return an explicitly supplied field value or UNSET when omitted by the client."""
+    if field_name in payload.model_fields_set:
+        return getattr(payload, field_name)
+    return UNSET
+
+
+def _execute_service_call(
+    db: Session,
+    action: Callable[[], _T],
+    *,
+    fallback_error_detail: str,
+) -> _T:
+    """Execute an investigation service call and translate domain/DB errors to HTTP responses."""
+    try:
+        return action()
+    except InvestigationNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except InvestigationConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvestigationValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except InvestigationAlertSyncError as exc:
+        logger.exception("Investigation alert synchronization failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to resolve investigation because alert synchronization failed.",
+        ) from exc
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning("Database conflict while processing investigation request")
+        raise HTTPException(
+            status_code=409,
+            detail="Unable to save investigation because of a database conflict.",
+        ) from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception(fallback_error_detail)
+        raise HTTPException(
+            status_code=500,
+            detail=fallback_error_detail,
+        ) from exc
 
 
 @router.post(
@@ -32,55 +90,16 @@ def create_investigation(
     db: Session = Depends(get_db),
 ):
     """Create an investigation for an existing alert."""
-    alert = db.get(Alert, payload.alert_id)
-
-    if alert is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Alert not found.",
-        )
-
-    existing_investigation = db.scalar(
-        select(Investigation).where(
-            Investigation.alert_id == payload.alert_id
-        )
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.create_investigation(
+            db,
+            alert_id=payload.alert_id,
+            assigned_to=payload.assigned_to,
+            initial_note=payload.initial_note,
+        ),
+        fallback_error_detail="Unable to create investigation.",
     )
-
-    if existing_investigation is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="An investigation already exists for this alert.",
-        )
-
-    investigation = Investigation(
-        alert_id=payload.alert_id,
-        assigned_to=payload.assigned_to,
-    )
-
-    try:
-        db.add(investigation)
-        db.commit()
-        db.refresh(investigation)
-        return investigation
-
-    except IntegrityError as exc:
-        db.rollback()
-        logger.warning(
-            "Investigation creation conflicted for alert_id=%s",
-            payload.alert_id,
-        )
-        raise HTTPException(
-            status_code=409,
-            detail="Unable to create the investigation because of a database conflict.",
-        ) from exc
-
-    except SQLAlchemyError as exc:
-        db.rollback()
-        logger.exception("Database error while creating investigation")
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to create investigation.",
-        ) from exc
 
 
 @router.get(
@@ -99,47 +118,31 @@ def get_investigations(
         min_length=1,
         max_length=100,
     ),
+    outcome: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=30,
+    ),
+    include_context: bool = Query(default=False),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    """Retrieve investigations with optional filters and pagination."""
-    try:
-        query = select(Investigation)
-
-        if alert_id is not None:
-            query = query.where(
-                Investigation.alert_id == alert_id
-            )
-
-        if status is not None:
-            query = query.where(
-                Investigation.status == status.upper()
-            )
-
-        if assigned_to is not None:
-            query = query.where(
-                Investigation.assigned_to == assigned_to
-            )
-
-        query = (
-            query
-            .order_by(
-                Investigation.created_at.desc(),
-                Investigation.investigation_id.desc(),
-            )
-            .offset(offset)
-            .limit(limit)
-        )
-
-        return list(db.scalars(query).all())
-
-    except SQLAlchemyError as exc:
-        logger.exception("Failed to retrieve investigations")
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to retrieve investigations.",
-        ) from exc
+    """Retrieve investigations with optional filters, pagination, and optional context."""
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.list_investigations(
+            db,
+            alert_id=alert_id,
+            status=status,
+            assigned_to=assigned_to,
+            outcome=outcome,
+            limit=limit,
+            offset=offset,
+            include_context=include_context,
+        ),
+        fallback_error_detail="Unable to retrieve investigations.",
+    )
 
 
 @router.get(
@@ -148,18 +151,114 @@ def get_investigations(
 )
 def get_investigation(
     investigation_id: int,
+    include_context: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):
     """Retrieve one investigation by its ID."""
-    investigation = db.get(Investigation, investigation_id)
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.get_investigation_by_id(
+            db,
+            investigation_id,
+            include_context=include_context,
+        ),
+        fallback_error_detail="Unable to retrieve investigation.",
+    )
 
-    if investigation is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Investigation not found.",
-        )
 
-    return investigation
+@router.post(
+    "/{investigation_id}/assign",
+    response_model=InvestigationResponse,
+)
+def assign_investigation(
+    investigation_id: int,
+    payload: InvestigationAssignRequest,
+    db: Session = Depends(get_db),
+):
+    """Assign, reassign, or explicitly unassign (null) an analyst on an investigation."""
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.assign_investigation(
+            db,
+            investigation_id,
+            assigned_to=payload.assigned_to,
+            note=payload.note,
+            author=payload.author,
+        ),
+        fallback_error_detail="Unable to assign investigation.",
+    )
+
+
+@router.post(
+    "/{investigation_id}/start",
+    response_model=InvestigationResponse,
+)
+def start_investigation(
+    investigation_id: int,
+    payload: InvestigationStartRequest | None = None,
+    db: Session = Depends(get_db),
+):
+    """Transition an OPEN investigation to IN_PROGRESS."""
+    assigned_to = (
+        _optional_field(payload, "assigned_to") if payload is not None else UNSET
+    )
+    note = payload.note if payload is not None else None
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.start_investigation(
+            db,
+            investigation_id,
+            assigned_to=assigned_to,
+            note=note,
+        ),
+        fallback_error_detail="Unable to start investigation.",
+    )
+
+
+@router.post(
+    "/{investigation_id}/notes",
+    response_model=InvestigationResponse,
+)
+def add_investigation_note(
+    investigation_id: int,
+    payload: InvestigationNoteCreate,
+    db: Session = Depends(get_db),
+):
+    """Append a timestamped note to an active investigation."""
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.add_investigation_note(
+            db,
+            investigation_id,
+            note=payload.note,
+            author=payload.author,
+        ),
+        fallback_error_detail="Unable to add investigation note.",
+    )
+
+
+@router.post(
+    "/{investigation_id}/resolve",
+    response_model=InvestigationResponse,
+)
+def resolve_investigation(
+    investigation_id: int,
+    payload: InvestigationResolveRequest,
+    db: Session = Depends(get_db),
+):
+    """Resolve an IN_PROGRESS investigation with a final outcome and sync the linked alert."""
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.resolve_investigation(
+            db,
+            investigation_id,
+            outcome=payload.outcome,
+            findings=payload.findings,
+            assigned_to=_optional_field(payload, "assigned_to"),
+            author=payload.author,
+        ),
+        fallback_error_detail="Unable to resolve investigation.",
+    )
 
 
 @router.patch(
@@ -171,50 +270,17 @@ def update_investigation(
     payload: InvestigationUpdate,
     db: Session = Depends(get_db),
 ):
-    """Update an investigation's assignee, status, or findings."""
-    investigation = db.get(Investigation, investigation_id)
-
-    if investigation is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Investigation not found.",
-        )
-
-    updates = payload.model_dump(exclude_unset=True)
-
-    if not updates:
-        raise HTTPException(
-            status_code=422,
-            detail="At least one field must be provided for an update.",
-        )
-
-    if "status" in updates and updates["status"] is not None:
-        updates["status"] = updates["status"].strip().upper()
-
-        if not updates["status"]:
-            raise HTTPException(
-                status_code=422,
-                detail="Status cannot be empty.",
-            )
-
-    if "assigned_to" in updates and updates["assigned_to"] is not None:
-        updates["assigned_to"] = updates["assigned_to"].strip() or None
-
-    try:
-        for field, value in updates.items():
-            setattr(investigation, field, value)
-
-        db.commit()
-        db.refresh(investigation)
-        return investigation
-
-    except SQLAlchemyError as exc:
-        db.rollback()
-        logger.exception(
-            "Database error while updating investigation_id=%s",
+    """Partially update an investigation's assignee, status, findings, notes, or outcome."""
+    return _execute_service_call(
+        db,
+        lambda: investigation_service.update_investigation(
+            db,
             investigation_id,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to update investigation.",
-        ) from exc
+            assigned_to=_optional_field(payload, "assigned_to"),
+            status=_optional_field(payload, "status"),
+            findings=_optional_field(payload, "findings"),
+            note=_optional_field(payload, "note"),
+            outcome=_optional_field(payload, "outcome"),
+        ),
+        fallback_error_detail="Unable to update investigation.",
+    )

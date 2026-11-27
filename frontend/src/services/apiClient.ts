@@ -4,8 +4,12 @@ import {
   DashboardChartsData,
   DashboardStats,
   HealthResponse,
+  InvestigationAssignPayload,
   InvestigationCreatePayload,
   InvestigationItem,
+  InvestigationNotePayload,
+  InvestigationResolvePayload,
+  InvestigationStartPayload,
   InvestigationUpdatePayload,
   SimulationStartPayload,
   SimulationStatusResponse,
@@ -28,6 +32,27 @@ export class ApiError extends Error {
     this.status = status;
     this.data = data;
   }
+}
+
+function formatApiDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') {
+    const trimmed = detail.trim();
+    return trimmed || null;
+  }
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item === 'string') return item.trim();
+        if (item && typeof item === 'object' && 'msg' in item) {
+          const msg = String((item as { msg: unknown }).msg);
+          return msg.replace(/^Value error,\s*/i, '').trim();
+        }
+        return null;
+      })
+      .filter((msg): msg is string => Boolean(msg));
+    return messages.length > 0 ? messages.join('; ') : null;
+  }
+  return null;
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -58,7 +83,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       try {
         errorData = await response.json();
         if (errorData && typeof errorData === 'object' && 'detail' in errorData) {
-          errorMessage = String((errorData as { detail: unknown }).detail);
+          const parsedDetail = formatApiDetail((errorData as { detail: unknown }).detail);
+          if (parsedDetail) {
+            errorMessage = parsedDetail;
+          }
         }
       } catch {
         // Response was not JSON
@@ -158,6 +186,8 @@ export const api = {
     alert_id?: number;
     status?: string;
     assigned_to?: string;
+    outcome?: string;
+    include_context?: boolean;
     limit?: number;
     offset?: number;
   }): Promise<InvestigationItem[]> {
@@ -165,6 +195,10 @@ export const api = {
     if (params?.alert_id !== undefined) query.set('alert_id', String(params.alert_id));
     if (params?.status) query.set('status', params.status);
     if (params?.assigned_to) query.set('assigned_to', params.assigned_to);
+    if (params?.outcome) query.set('outcome', params.outcome);
+    if (params?.include_context !== undefined) {
+      query.set('include_context', String(params.include_context));
+    }
     if (params?.limit !== undefined) query.set('limit', String(params.limit));
     if (params?.offset !== undefined) query.set('offset', String(params.offset));
 
@@ -180,8 +214,53 @@ export const api = {
     });
   },
 
-  async getInvestigationById(investigationId: number): Promise<InvestigationItem> {
-    return request<InvestigationItem>(`/api/v1/investigations/${investigationId}`);
+  async getInvestigationById(
+    investigationId: number,
+    includeContext: boolean = true
+  ): Promise<InvestigationItem> {
+    return request<InvestigationItem>(
+      `/api/v1/investigations/${investigationId}?include_context=${includeContext}`
+    );
+  },
+
+  async assignInvestigation(
+    investigationId: number,
+    payload: InvestigationAssignPayload
+  ): Promise<InvestigationItem> {
+    return request<InvestigationItem>(`/api/v1/investigations/${investigationId}/assign`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async startInvestigation(
+    investigationId: number,
+    payload?: InvestigationStartPayload
+  ): Promise<InvestigationItem> {
+    return request<InvestigationItem>(`/api/v1/investigations/${investigationId}/start`, {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    });
+  },
+
+  async addInvestigationNote(
+    investigationId: number,
+    payload: InvestigationNotePayload
+  ): Promise<InvestigationItem> {
+    return request<InvestigationItem>(`/api/v1/investigations/${investigationId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async resolveInvestigation(
+    investigationId: number,
+    payload: InvestigationResolvePayload
+  ): Promise<InvestigationItem> {
+    return request<InvestigationItem>(`/api/v1/investigations/${investigationId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 
   async updateInvestigation(
